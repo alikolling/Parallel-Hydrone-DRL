@@ -1,0 +1,6 @@
+venv
+.idea
+__pycache__
+algorithms/__pycache__
+utils/__pycache__
+runs
