@@ -160,15 +160,11 @@ if __name__ == "__main__":
         if not i:
             os.system('gnome-terminal --tab --working-directory=WORK_DIR -- bash -c "export '
                       'ROS_MASTER_URI=http://localhost:{}; export GAZEBO_MASTER_URI=http://localhost:{}; roslaunch '
-<<<<<<< HEAD
-                      'hydrone_aerial_deep_rl hydrone_aerial_deep_rl_1.launch"'.format(11311 + i, 11341 + i))
-=======
-                      'hydrone_aerial_deep_rl hydrone_aerial_deep_rl_{}_pure.launch"'.format(11311 + i, 11341 + i, config['env_stage']))
->>>>>>> 5b70cd441b5cc3bba0479139446f314472184f4a
+                      'hydrone_aerial_deep_rl hydrone_aerial_deep_rl_{}_1.launch"'.format(11311 + i, 11341 + i, config['env_stage']))
         else:
             os.system('gnome-terminal --tab --working-directory=WORK_DIR -- bash -c "export '
                       'ROS_MASTER_URI=http://localhost:{}; export GAZEBO_MASTER_URI=http://localhost:{}; roslaunch '
-                      'hydrone_aerial_deep_rl hydrone_aerial_deep_rl.launch"'.format(11311 + i, 11341 + i))
+                      'hydrone_aerial_deep_rl hydrone_aerial_deep_rl_{}.launch"'.format(11311 + i, 11341 + i, config['env_stage']))
         time.sleep(2)
     time.sleep(5)
 
