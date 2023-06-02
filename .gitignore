@@ -4,3 +4,5 @@ __pycache__
 algorithms/__pycache__
 utils/__pycache__
 runs
+results
+saved_models
