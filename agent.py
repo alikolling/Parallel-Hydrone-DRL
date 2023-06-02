@@ -87,7 +87,7 @@ class Agent(object):
                         state[s] = 2.5
 
                 if self.config['model'] == 'PDSRL' or self.config['model'] == 'SAC':
-                    action, _, _, _, _, _, _, _ = self.actor.forward(torch.Tensor(state).to(self.config['device']), deterministic=True if self.agent_type == "exploitation" else False)
+                    action = self.actor.get_action(torch.Tensor(state).to(self.config['device']), exploitation=True if self.agent_type == "exploitation" else False)
                     action = action.detach().cpu().numpy().flatten()
                 else:
                     action = self.actor.get_action(np.array(state))
@@ -174,11 +174,16 @@ class Agent(object):
             if not self.config['test']:
                 reward_outperformed = episode_reward - best_reward > self.config["save_reward_threshold"]
                 time_to_save = self.local_episode % self.num_episode_save == 0
-                if self.agent_type == "exploitation" and (time_to_save or reward_outperformed):
+                #if self.agent_type == "exploitation" and (time_to_save or reward_outperformed):
+                #    if episode_reward > best_reward:
+                #        best_reward = episode_reward
+                #    self.save(f"local_episode_{self.local_episode}_reward_{best_reward:4f}")
+
+                if self.agent_type == "exploration" and self.n_agent == 4 and (time_to_save or reward_outperformed):
                     if episode_reward > best_reward:
                         best_reward = episode_reward
                     self.save(f"local_episode_{self.local_episode}_reward_{best_reward:4f}")
-
+                    
                 rewards.append(episode_reward)
                 if self.agent_type == "exploration" and self.local_episode % self.config['update_agent_ep'] == 0:
                     self.update_actor_learner(learner_w_queue, training_on)

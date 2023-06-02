@@ -312,14 +312,17 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             transitions at the sampled idxes denoted by
             variable `idxes`.
         """
-        assert len(idxes) == len(priorities)
-        for idx, priority in zip(idxes, priorities):
-            assert priority > 0
-            assert 0 <= idx  # < len(self._storage)
-            idx = int(idx)
-            self._it_sum[idx] = priority ** self._alpha
-            self._it_min[idx] = priority ** self._alpha
-            self._max_priority = max(self._max_priority, priority)
+        try:
+            for idx, priority in zip(idxes, priorities):
+                if priority < 0:
+                    priority = 0
+                assert 0 <= idx  # < len(self._storage)
+                idx = int(idx)
+                self._it_sum[idx] = priority ** self._alpha
+                self._it_min[idx] = priority ** self._alpha
+                self._max_priority = max(self._max_priority, priority)
+        except:
+            print('Error on update_priorities, but it keep running...')
 
     def dump(self, save_dir):
         fn = os.path.join(save_dir, "replay_buffer.pkl")
@@ -500,46 +503,52 @@ def eval_np(module, *args, **kwargs):
         return np_ify(outputs)
 
 """
+Goals para obtenção de resultados
+
+
+#env 1 
 def test_goals(t):
     if t < 25:
-        return [2.5, -2.0]
+        return [-1.5, -1.5, 1.5]
     elif 25 <= t < 50:
-        return [3.5, -0.5]
+        return [1.5, -1.5, 1.5]
     elif 50 <= t < 75:
-        return [0.5, -3.5]
+        return [-1.5, 1.5, 1.5]
     elif t >= 75:
-        return [3.5, -3.5]
-
-
+        return [1.5, 1.5, 1.5]
+"""
+"""
+#env 2 
 def test_goals(t):
     if t < 25:
-        return [-1.5, -1.5]
+        return [-3.75, 3.75, 2.5]
     elif 25 <= t < 50:
-        return [1.5, -1.5]
+        return [3.75, 3.75, 2.5]
     elif 50 <= t < 75:
-        return [-1.5, 1.5]
+        return [3.75, -3.75, 2.5]
     elif t >= 75:
-        return [1.5, 1.5]
-"""
+        return [-3.75, -3.75, 2.5]
 
+
+#env 3
 def test_goals(t):
-    if t < 2:
-        return [-1.5, -1.5]
-    elif 2 <= t < 3:
-        return [1.5, -1.5]
-    elif 3 <= t < 4:
-        return [-1.5, 1.5]
-    elif t >= 4:
-        return [1.5, 1.5]
+    if t < 25:
+        return [0., 3.5, 1.5]
+    elif 25 <= t < 50:
+        return [3.5, 0., 1.5]
+    elif 50 <= t < 75:
+        return [0., -3.5, 1.5]
+    elif t >= 75:
+    	return [-3.5, 0., 1.5]
 
 """
+#env office
 def test_goals(t):
-    if t < 2:
-        return [1.5, -1.5]  # return [1.5, -1.5] [2.5, -2.0]
-    elif 2 <= t < 3:
-        return [3.5, -0.5]
-    elif 3 <= t < 4:
-        return [0.5, -3.5]
-    elif t >= 4:
-        return [3.5, -3.5]
-"""
+    if t < 25:
+        return [-5.75, -3.5, 1.5]
+    elif 25 <= t < 50:
+        return [-6.15, 6.15, 1.5]
+    elif 50 <= t < 75:
+        return [6.75, 5., 1.5]
+    elif t >= 75:
+    	return [6., -5., 1.5]

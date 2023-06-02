@@ -21,8 +21,9 @@ from algorithms.dsac import LearnerDSAC
 from algorithms.d4pg import LearnerD4PG
 from algorithms.ddpg import LearnerDDPG
 from algorithms.sac import LearnerSAC
+from algorithms.td3 import LearnerTD3
 from tensorboardX import SummaryWriter
-from models import PolicyNetwork, TanhGaussianPolicy, PolicyNetwork2
+from models import PolicyNetwork, TanhGaussianPolicy, PolicyNetwork2, DiagGaussianActor
 from agent import Agent
 
 
@@ -139,6 +140,8 @@ def learner_worker(config, training_on, policy, target_policy_net, learner_w_que
         learner = LearnerDDPG(config, policy, target_policy_net, learner_w_queue, log_dir=experiment_dir)
     elif config['model'] == 'SAC':
         learner = LearnerSAC(config, policy, target_policy_net, learner_w_queue, log_dir=experiment_dir)
+    elif config['model'] == 'TD3':
+        learner = LearnerTD3(config, policy, target_policy_net, learner_w_queue, log_dir=experiment_dir)
     learner.run(training_on, batch_queue, replay_priority_queue, update_step, global_episode, logs)
 
 
@@ -181,7 +184,7 @@ if __name__ == "__main__":
         os.makedirs(results_dir)
     if config['test']:
         model_name = f"{config['model']}_{config['dense_size']}_A{config['num_agents']}_S{config['env_stage']}_{'P' if config['replay_memory_prioritized'] else 'N'}"
-        path_model = f"{experiment_dir}/{model_name}/local_episode_150_reward_200.000000.pt"
+        path_model = f"{experiment_dir}/{model_name}/local_episode_last_reward_200.000000.pt"
 
     # Data structures
     processes = []
@@ -207,7 +210,7 @@ if __name__ == "__main__":
         processes.append(p)
 
     # Learner (neural net training process)
-    assert any(config['model'] == np.array(['PDDRL', 'PDSRL']))  # Only D4PG and DSAC
+    assert any(config['model'] == np.array(['PDDRL', 'PDSRL', 'SAC', 'DDPG', 'TD3']))  # Only D4PG and DSAC
     if config['model'] == 'PDDRL':
         if config['test']:
             try:
@@ -256,18 +259,33 @@ if __name__ == "__main__":
     elif config['model'] == 'SAC':
         if config['test']:
             try:
-                target_policy_net = PolicyNetwork2(config['state_dim'], config['action_dim'], config['dense_size'])
+                target_policy_net = DiagGaussianActor(config['state_dim'], config['action_dim'], config['dense_size'], 2, [-config['max_action'], config['max_action']])
                 target_policy_net.load_state_dict(torch.load(path_model, map_location=config['device']))
             except:
                 target_policy_net = torch.load(path_model)
                 target_policy_net.to(config['device'])
             target_policy_net.eval()
         else:
-            target_policy_net = PolicyNetwork2(config['state_dim'], config['action_dim'], config['dense_size'])
+            target_policy_net = DiagGaussianActor(config['state_dim'], config['action_dim'], config['dense_size'], 2, [-config['max_action'], config['max_action']])
             policy_net = copy.deepcopy(target_policy_net)
-            policy_net_cpu = PolicyNetwork2(config['state_dim'], config['action_dim'], config['dense_size'])
+            policy_net_cpu = DiagGaussianActor(config['state_dim'], config['action_dim'], config['dense_size'], 2, [-config['max_action'], config['max_action']])
         target_policy_net.share_memory()
-
+    elif config['model'] == 'TD3':
+        if config['test']:
+            try:
+                target_policy_net = PolicyNetwork(config['state_dim'], config['action_dim'], config['dense_size'], device=config['device'])
+                target_policy_net.load_state_dict(torch.load(path_model, map_location=config['device']))
+            except:
+                target_policy_net = torch.load(path_model)
+                target_policy_net.to(config['device'])
+            target_policy_net.eval()
+        else:
+            target_policy_net = PolicyNetwork(config['state_dim'], config['action_dim'], config['dense_size'], device=config['device'])
+            policy_net = copy.deepcopy(target_policy_net)
+            policy_net_cpu = PolicyNetwork(config['state_dim'], config['action_dim'], config['dense_size'], device=config['device'])
+        target_policy_net.share_memory()
+        
+        
     print('Algorithm:', config['model'], "-" + 'P' if config['replay_memory_prioritized'] else 'N')
     if not config['test']:
         p = torch_mp.Process(target=learner_worker, args=(config, training_on, policy_net, target_policy_net,

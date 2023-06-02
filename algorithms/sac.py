@@ -1,11 +1,14 @@
 from utils.utils import empty_torch_queue
-from models import Critic, Q
 from torch.distributions import Normal
+from models import DoubleQCritic
+import torch.nn.functional as F
 import torch.optim as optim
 import torch.nn as nn
-import queue
+import numpy as np
 import torch
+import queue
 import time
+import os
 
 
 class LearnerSAC(object):
@@ -18,15 +21,27 @@ class LearnerSAC(object):
         self.device = config['device']
         self.save_dir = log_dir
         self.learner_w_queue = learner_w_queue
+        self.prioritized_replay = config['replay_memory_prioritized']
+        self.priority_epsilon = config['priority_epsilon']
+        self.model = config['model']
+        self.env_stage = config['env_stage']
+        self.num_train_steps = config['num_steps_train']  # number of episodes from all agents
+
 
         self.actor = policy_net
+        self.actor_target = target_policy_net
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=config['actor_learning_rate'])
-        self.critic = Critic(config['state_dim'], config['action_dim'], config['dense_size']).to(self.device)
+
+        self.critic = DoubleQCritic(config['state_dim'], config['action_dim'], config['dense_size'], 1)
+        self.critic_target = DoubleQCritic(config['state_dim'], config['action_dim'], config['dense_size'], 1)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=config['critic_learning_rate'])
 
-        self.Q_net = Q(config['state_dim'], config['action_dim'], hidden=config['dense_size']).to(self.device)
-        self.Q_optimizer = optim.Adam(self.Q_net.parameters(), lr=config['q_learning_rate'])
-        self.critic_target = Critic(config['state_dim'], config['action_dim'], config['dense_size']).to(self.device)
+        self.learnable_temperature = config['use_automatic_entropy_tuning']
+        self.target_entropy = -2
+        self.init_temperature = 0.1
+        self.log_alpha = torch.tensor(np.log(self.init_temperature)).to(self.device)
+        self.log_alpha.requires_grad = True
+        self.log_alpha_optimizer = optim.Adam([self.log_alpha], lr=config['actor_learning_rate'])
 
         self.critic_criterion = nn.MSELoss()
         self.Q_criterion = nn.MSELoss()
@@ -34,7 +49,7 @@ class LearnerSAC(object):
 
         for target_param, param in zip(self.critic_target.parameters(), self.critic.parameters()):
             target_param.data.copy_(param.data)
-        for target_param, param in zip(self.target_policy_net.parameters(), self.actor.parameters()):
+        for target_param, param in zip(self.actor_target.parameters(), self.actor.parameters()):
             target_param.data.copy_(param.data)
 
     def select_action(self, state):
@@ -46,9 +61,13 @@ class LearnerSAC(object):
         action = torch.tanh(z).detach().cpu().numpy()
         return action.item()
 
+    @property
+    def alpha(self):
+        return self.log_alpha.exp()
+
     def get_action_log_prob(self, state):
         min_Val = torch.tensor(1e-7).float()
-        batch_mu, batch_log_sigma = self.actor(state)
+        batch_mu, batch_log_sigma, _ = self.actor(state)
         batch_sigma = torch.exp(batch_log_sigma)
         dist = Normal(batch_mu, batch_sigma)
         z = dist.sample()
@@ -56,79 +75,92 @@ class LearnerSAC(object):
         log_prob = dist.log_prob(z) - torch.log(1 - action.pow(2) + min_Val)
         return action, log_prob, z, batch_mu, batch_log_sigma
 
-    def _update_step(self, replay_buffer, update_step, logs):
+    def _update_step(self, batch, replay_priority_queue, update_step, logs):
         update_time = time.time()
 
         # Sample replay buffer
-        x, u, r, y, d, _ = replay_buffer.sample(self.batch_size)
-        state = torch.FloatTensor(x).to(self.device)
-        next_state = torch.FloatTensor(y).to(self.device)
-        action = torch.FloatTensor(u).to(self.device)
-        reward = torch.FloatTensor(r).to(self.device)
-        done = torch.FloatTensor(1 - d).to(self.device)
+        obs, actions, rewards, next_obs, terminals, gamma, weights, inds = batch
 
-        # Compute the target Q value
-        target_value = self.critic_target(next_state)
-        next_q_value = reward + (1 - done) * self.config['discount_rate'] * target_value
-        excepted_value = self.actor(state)
-        excepted_Q = self.Q_net(state, action)
+        obs = np.asarray(obs)
+        actions = np.asarray(actions)
+        rewards = np.asarray(rewards)
+        next_obs = np.asarray(next_obs)
+        terminals = np.asarray(terminals)
+        weights = np.asarray(weights)
+        inds = np.asarray(inds).flatten()
 
-        # Get current Q estimate
-        sample_action, log_prob, z, batch_mu, batch_log_sigma = self.get_action_log_prob(state)
-        excepted_new_Q = self.Q_net(state, sample_action)
-        next_value = excepted_new_Q - log_prob
+        obs = torch.from_numpy(obs).float().to(self.device)
+        next_obs = torch.from_numpy(next_obs).float().to(self.device)
+        actions = torch.from_numpy(actions).float().to(self.device)
+        rewards = torch.from_numpy(rewards).float().to(self.device)
+        terminals = torch.from_numpy(terminals).float().to(self.device)
 
-        # Compute critic loss
-        critic_loss = self.critic_criterion(excepted_value, next_value.detach())  # J_V
-        critic_loss = critic_loss.mean()
+        rewards = rewards.unsqueeze(1)
+        terminals = terminals.unsqueeze(1)
 
-        # Compute Q loss. Single Q_net this is different from original paper
-        Q_loss = self.Q_criterion(excepted_Q, next_q_value.detach())  # J_Q
-        Q_loss = Q_loss.mean()
+        dist = self.actor(next_obs)
+        next_action = dist.rsample()
+        log_prob = dist.log_prob(next_action).sum(-1, keepdim=True)
+        target_Q1, target_Q2 = self.critic_target(next_obs, next_action)
+        target_V = torch.min(target_Q1, target_Q2) - self.alpha.detach() * log_prob
+        target_Q = rewards + ((1.0 - terminals) * self.gamma * target_V)
+        target_Q = target_Q.detach()
 
-        # Compute actor loss
-        log_policy_target = excepted_new_Q - excepted_value
-        pi_loss = log_prob * (log_prob - log_policy_target).detach()
-        pi_loss = pi_loss.mean()
+        # get current Q estimates
+        current_Q1, current_Q2 = self.critic(obs, actions)
+        critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
 
-        # Logging
-        with logs.get_lock():
-            logs[3] = critic_loss
-            logs[4] = Q_loss
-            logs[5] = time.time() - update_time
+        if self.prioritized_replay:
+            td_error = critic_loss.cpu().detach().numpy().flatten()
+            weights_update = np.abs(td_error) + self.priority_epsilon
+            replay_priority_queue.put((inds, weights_update))
+            critic_loss = critic_loss * torch.tensor(weights).float().to(self.device)
+            critic_loss = critic_loss.mean()
 
-        # Optimize the critic. Mini batch gradient descent
+        # Optimize the critic
         self.critic_optimizer.zero_grad()
-        critic_loss.backward(retain_graph=True)
-        nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
+        critic_loss.backward()
         self.critic_optimizer.step()
 
-        # Optimize the Q
-        self.Q_optimizer.zero_grad()
-        Q_loss.backward(retain_graph=True)
-        nn.utils.clip_grad_norm_(self.Q_net.parameters(), 0.5)
-        self.Q_optimizer.step()
+        dist = self.actor(obs)
+        action = dist.rsample()
+        log_prob = dist.log_prob(action).sum(-1, keepdim=True)
+        actor_Q1, actor_Q2 = self.critic(obs, action)
 
-        # Optimize the actor
+        actor_Q = torch.min(actor_Q1, actor_Q2)
+        actor_loss = (self.alpha.detach() * log_prob - actor_Q).mean()
+
+        # optimize the actor
         self.actor_optimizer.zero_grad()
-        pi_loss.backward(retain_graph=True)
-        nn.utils.clip_grad_norm_(self.actor.parameters(), 0.5)
+        actor_loss.backward()
         self.actor_optimizer.step()
+
+        if self.learnable_temperature:
+            self.log_alpha_optimizer.zero_grad()
+            alpha_loss = (self.alpha * (-log_prob - self.target_entropy).detach()).mean()
+            alpha_loss.backward()
+            self.log_alpha_optimizer.step()
 
         # soft update
         for target_param, param in zip(self.critic_target.parameters(), self.critic.parameters()):
-            target_param.data.copy_(target_param * (1 - self.config['tau']) + param * self.config['tau'])
+            target_param.data.copy_(target_param * (1 - self.tau) + param * self.tau)
 
         for target_param, param in zip(self.actor_target.parameters(), self.actor.parameters()):
-            target_param.data.copy_(target_param * (1 - self.config['tau']) + param * self.config['tau'])
+            target_param.data.copy_(target_param * (1 - self.tau) + param * self.tau)
 
         # Send updated learner to the queue
         if update_step.value % 100 == 0:
             try:
                 params = [p.data.cpu().detach().numpy() for p in self.actor.parameters()]
-                self.learner_w_queue.put(params)
+                self.learner_w_queue.put_nowait(params)
             except:
                 pass
+
+        # Logging
+        with logs.get_lock():
+            logs[3] = actor_loss
+            logs[4] = critic_loss
+            logs[5] = time.time() - update_time
 
         self.num_training += 1
 
@@ -141,7 +173,7 @@ class LearnerSAC(object):
                 time.sleep(0.01)
                 continue
 
-            self._update_step(batch, update_step, logs)
+            self._update_step(batch, replay_priority_queue, update_step, logs)
             with update_step.get_lock():
                 update_step.value += 1
 
