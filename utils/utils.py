@@ -509,15 +509,15 @@ Goals para obtenção de resultados
 #env 1 
 def test_goals(t):
     if t < 25:
-        return [-1.5, -1.5, 1.5]
+        return [-3.5, -3.5, 1.5]
     elif 25 <= t < 50:
-        return [1.5, -1.5, 1.5]
+        return [3.5, -3.5, 1.5]
     elif 50 <= t < 75:
-        return [-1.5, 1.5, 1.5]
+        return [-3.5, 3.5, 1.5]
     elif t >= 75:
-        return [1.5, 1.5, 1.5]
-"""
-"""
+        return [3.5, 3.5, 1.5]
+
+
 #env 2 
 def test_goals(t):
     if t < 25:
@@ -529,7 +529,7 @@ def test_goals(t):
     elif t >= 75:
         return [-3.75, -3.75, 2.5]
 
-
+"""
 #env 3
 def test_goals(t):
     if t < 25:
@@ -540,8 +540,8 @@ def test_goals(t):
         return [0., -3.5, 1.5]
     elif t >= 75:
     	return [-3.5, 0., 1.5]
-
 """
+
 #env office
 def test_goals(t):
     if t < 25:
@@ -552,3 +552,4 @@ def test_goals(t):
         return [6.75, 5., 1.5]
     elif t >= 75:
     	return [6., -5., 1.5]
+"""

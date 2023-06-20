@@ -314,7 +314,7 @@ class TanhGaussianPolicy(Mlp, ExplorationPolicy):
         super(TanhGaussianPolicy, self).to(device)
 
     @torch.no_grad()
-    def get_action(self, obs_np):
+    def get_action(self, obs_np, exploitation=False):
         action, _, _, _, _, _, _, _ = self.forward(obs_np)
         return action
 

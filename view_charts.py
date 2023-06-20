@@ -34,11 +34,14 @@ n = 100  # the larger n is, the smoother curve will be
 b = [1.0 / n] * n
 a = 1
 
-color = {'PDDRL-N': 'dodgerblue', 'PDSRL-N': 'springgreen', 'PDDRL-P': 'indigo', 'PDSRL-P': 'deeppink'}
-x_lim = {'S1': 150, 'S2': 500, 'Sl': 2000, 'Su': 2000}
+color = {'SAC': 'dodgerblue', 'PDSAC': 'springgreen', 'SAC-P': 'indigo', 'PDSAC-P': 'deeppink'}
+x_lim = {'S1': 500, 'S2': 500, 'S3': 500}
+
 fig, ax = plt.subplots()
 
-sorted_dir = sorted_dir[-8:-4]
+sorted_dir = np.array(sorted_dir)
+print('Dir:', sorted_dir)
+sorted_dir = sorted_dir[np.array([7,8,11,12])]
 print('Dir:', sorted_dir)
 
 print('Generating charts...')
@@ -47,6 +50,16 @@ for c, directory in tqdm(enumerate(sorted_dir), total=len(sorted_dir)):
         data = json.load(f)
 
     print('Directory:', directory)
+    if directory[0] != 'BUG2':
+        jaja = 'PDSAC' if directory[0]=='PDSRL' else 'SAC'
+        if directory[-1] != 'N':
+            name = "-".join([jaja, directory[-1]])
+        else:
+            name = jaja
+    else:
+        name = jaja
+    print(name)
+    
     if directory[0] == 'PDSRL' and directory[3] == 'Sl' and directory[4] == 'N':
         print('Data:', data[2]['y'])
         print('------------------------------------------------')
@@ -60,25 +73,28 @@ for c, directory in tqdm(enumerate(sorted_dir), total=len(sorted_dir)):
             data[new_key_list[i]] = data.pop(key)
 
         # print(data)
-        rewards = pd.DataFrame(data['agent_0/reward']).iloc[:, 2].to_numpy()
+        rewards = pd.DataFrame(data['agent_0/reward']).iloc[:, 2].to_numpy().astype(int)
+        if name == 'D4PG-P':
+            rewards = pd.DataFrame(data['agent_0/reward']).iloc[:, 2].to_numpy().astype(int)
         rewards = np.array([200 if reward >= 200 else reward for reward in rewards])
         # steps = pd.DataFrame(data['data_struct/global_step']).iloc[:, 2].to_numpy()
     episodes = np.arange(len(rewards))
     means = lfilter(b, a, rewards)
     _, stds = mfilter(rewards, n)
-
-    sel = '-'.join([directory[0], directory[4]])
-    ax.plot(episodes, means, linestyle='-', linewidth=2, label=sel if sel.split('-')[1] == 'P' else sel.split('-')[0], c=color[sel])
-    ax.fill_between(episodes, means - stds, means + stds, alpha=0.15, facecolor=color[sel])
+    
+    
+    
+    ax.plot(episodes, means, linestyle='-', linewidth=2, label=name, c=color[name])
+    ax.fill_between(episodes, means - stds, means + stds, alpha=0.15, facecolor=color[name])
 
     if (c+1) % 4 == 0:
         ax.legend(loc=4, prop={'size': 14})
-        ax.set_xlabel('Episode', fontsize=12)
+        ax.set_xlabel('1000 Steps', fontsize=12)
         ax.set_ylabel('Reward', fontsize=12)
         ax.set_xlim([0, x_lim[directory[3]]])
         ax.set_ylim([-21, 201])
         ax.grid()
-        plt.savefig("{}.pdf".format(sel), format="pdf", bbox_inches="tight")
+        plt.savefig("{}.pdf".format(name), format="pdf", bbox_inches="tight")
         plt.show()
         fig, ax = plt.subplots()
     

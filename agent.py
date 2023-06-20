@@ -150,6 +150,7 @@ class Agent(object):
                     position = env.get_position()  # Get x and y turtlebot position to compute test charts
                     logs[3] = position[0]
                     logs[4] = position[1]
+                    logs[5] = position[2]
 
             with self.global_episode.get_lock():
                 self.global_episode.value += 1
@@ -179,7 +180,7 @@ class Agent(object):
                 #        best_reward = episode_reward
                 #    self.save(f"local_episode_{self.local_episode}_reward_{best_reward:4f}")
 
-                if self.agent_type == "exploration" and self.n_agent == 4 and (time_to_save or reward_outperformed):
+                if self.agent_type == "exploration" and self.n_agent == 1 and (time_to_save or reward_outperformed):
                     if episode_reward > best_reward:
                         best_reward = episode_reward
                     self.save(f"local_episode_{self.local_episode}_reward_{best_reward:4f}")

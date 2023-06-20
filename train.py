@@ -113,7 +113,7 @@ def logger(config, logs, training_on, update_step, global_episode, global_step, 
             else:
                 writer.add_scalars(main_tag="agent_0", tag_scalar_dict={"reward": logs[0], "episode_timing": logs[1],
                                                                         "episode": logs[2], "x": logs[3],
-                                                                        "y": logs[4]}, global_step=global_step.value)
+                                                                        "y": logs[4], "z": logs[5]}, global_step=global_step.value)
 
             time.sleep(0.05)
             writer.flush()
@@ -176,10 +176,10 @@ if __name__ == "__main__":
         np.random.seed(config['random_seed'])
 
     # Create directory for experiment
-    experiment_dir = path + '/saved_models/'
+    experiment_dir = path + '/saved_models'
     if not os.path.exists(experiment_dir):
         os.makedirs(experiment_dir)
-    results_dir = path + f"/{config['results_path']}/"
+    results_dir = path + f"/{config['results_path']}"
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
     if config['test']:
