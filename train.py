@@ -27,7 +27,7 @@ from models import PolicyNetwork, TanhGaussianPolicy, PolicyNetwork2, DiagGaussi
 from agent import Agent
 
 
-def sampler_worker(config, replay_queue, batch_queue, replay_priorities_queue, training_on, global_episode, logs, experiment_dir):
+def sampler_worker(config, replay_queue, batch_queue, replay_priorities_queue, training_on, global_episode, logs, experiment_dir, update_step):
     torch.set_num_threads(4)
     # Create replay buffer
     replay_buffer = create_replay_buffer(config, experiment_dir)
@@ -208,7 +208,7 @@ if __name__ == "__main__":
     if not config['test']:
         batch_queue = mp.Queue(maxsize=config['batch_queue_size'])
         p = torch_mp.Process(target=sampler_worker, args=(config, replay_queue, batch_queue, replay_priorities_queue,
-                                                          training_on, global_episode, logs, experiment_dir))
+                                                          training_on, global_episode, logs, experiment_dir, update_step))
         processes.append(p)
 
     # Learner (neural net training process)
